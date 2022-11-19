@@ -9,6 +9,8 @@ import telegram
 from dotenv import load_dotenv
 from http import HTTPStatus
 
+import customerrors
+
 load_dotenv()
 
 
@@ -28,24 +30,6 @@ HOMEWORK_STATUSES = {
 }
 
 
-class MyCustomError(Exception):
-    """Обработка ошибки отправки сообщения."""
-
-    def __init__(self, *args):
-        """Инициализатор класса."""
-        if args:
-            self.message = args[0]
-        else:
-            self.message = None
-
-    def __str__(self):
-        """Объект в строку."""
-        if self.message:
-            return f'Ошибка отправки сообщения {self.message}'
-        else:
-            return 'Сообщение не удалось отправить'
-
-
 def send_message(bot, message):
     """function(Bot, str) -> None.
     Отправляет сообщение в Telegram чат, определяемый переменной окружения
@@ -54,8 +38,8 @@ def send_message(bot, message):
     """
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-    except MyCustomError(Exception) as error:
-        return error
+    except Exception:
+        raise customerrors.SendMessageError(Exception)
 
 
 def get_api_answer(current_timestamp):
@@ -83,15 +67,8 @@ def get_api_answer(current_timestamp):
                 f'Код ответа: {response_content.get("code")}',
                 f'Сообщение сервера: {response_content.get("message")}'
             )
-    except requests.ConnectionError as error:
-        message = f'Ошибка при обращении к API Яндекс.Практикума. {error}'
-        logging.error(error, message)
-    except requests.Timeout as error:
-        message = f'Ошибка Timeout. {error}'
-        logging.error(error, message)
-    except requests.RequestException as error:
-        message = f'Ошибка отправки запроса. {error}'
-        logging.error(error, message)
+    except Exception:
+        raise customerrors.ConnectionError(Exception)
 
 
 def check_response(response):
@@ -123,7 +100,7 @@ def check_response(response):
         )
 
 
-def parse_status(homework: list) -> str:
+def parse_status(homework):
     """function(list) -> str.
     Извлекает из информации о конкретной домашней работе статус этой.
     работы. В качестве параметра функция получает только один элемент
@@ -138,7 +115,8 @@ def parse_status(homework: list) -> str:
         verdict = HOMEWORK_STATUSES[homework_status]
         return f'Изменился статус проверки работы "{homework_name}". {verdict}'
     else:
-        return f'Статус не изменился "{homework_name}". {verdict}'
+        logging.error('Статус не обнаружен в списке')
+        raise ValueError('Статус не обнаружен в списке')
 
 
 def check_tokens():
@@ -160,8 +138,8 @@ def main():
     )
 
     if not check_tokens():
-        sys.exit(1)
         sys.stderr('Отсутствует переменная окружения')
+        sys.exit(1)
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
